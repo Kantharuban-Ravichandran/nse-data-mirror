@@ -10,9 +10,14 @@ def fetch_nse_bhavcopy():
     ist = pytz.timezone('Asia/Kolkata')
     now = datetime.now(ist)
     
-    # If it's before 6:30 PM IST, today's data might not be ready. Check yesterday.
-    if now.hour < 18 or (now.hour == 18 and now.minute < 30):
+    # --- UPDATED TIMING LOGIC ---
+    # Based on your observation (8:50 PM), we set the cutoff to 8:00 PM (20:00).
+    # If the script runs before 8:00 PM IST, it assumes today's data is not yet ready.
+    if now.hour < 20:
+        print("🕒 Pre-8:00 PM IST: Today's data likely not ready. Looking for yesterday's file...")
         now = now - timedelta(days=1)
+    else:
+        print("🕒 Post-8:00 PM IST: Attempting to fetch today's fresh data...")
 
     session = requests.Session()
     headers = {
@@ -26,9 +31,10 @@ def fetch_nse_bhavcopy():
     except:
         pass
 
-    # Try last 7 days to find the most recent trading day (skips weekends/holidays)
+    # Try last 7 days to find the most recent trading day
     for i in range(7):
-        while now.weekday() > 4: # Skip Sat/Sun
+        # Skip Sat/Sun logic
+        while now.weekday() > 4: 
             now = now - timedelta(days=1)
             
         date_str = now.strftime("%d%m%y") # DDMMYY for URL
@@ -43,11 +49,9 @@ def fetch_nse_bhavcopy():
                 with zipfile.ZipFile(io.BytesIO(response.content)) as z:
                     file_list = z.namelist()
                     
-                    # CASE-INSENSITIVE SEARCH: Look for any file starting with 'pd' and ending in '.csv'
-                    # NSE sometimes uses PD07042026.csv or pd07042026.csv
+                    # Case-insensitive search for the 'pd' CSV file
                     target = next((f for f in file_list if f.lower().startswith('pd') and f.lower().endswith('.csv')), None)
                     
-                    # FALLBACK: If no 'pd' file, take the largest CSV in the zip (usually the main data)
                     if not target:
                         csv_files = [info for info in z.infolist() if info.filename.lower().endswith('.csv')]
                         if csv_files:
@@ -56,7 +60,6 @@ def fetch_nse_bhavcopy():
                     if target:
                         with z.open(target) as f:
                             content = f.read().decode('utf-8')
-                            # Overwrite the master file for GitHub to sync
                             with open("latest_bhavcopy.csv", "w", encoding='utf-8') as output:
                                 output.write(content)
                         print(f"✅ SUCCESS: Extracted {target} as latest_bhavcopy.csv")
