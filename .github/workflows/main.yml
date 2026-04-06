@@ -2,21 +2,24 @@ name: Daily NSE Update
 
 on:
   schedule:
-    - cron: '00 11 * * 1-5' # 4:30 PM IST
-  workflow_dispatch: 
+    # Runs at 11:00 UTC (4:30 PM IST) Monday to Friday
+    - cron: '00 11 * * 1-5'
+  workflow_dispatch: # Allows you to click "Run workflow" manually
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    permissions: # Explicitly adding permissions here as a double-check
+    
+    # This block is critical for fixing "Exit Code 128"
+    permissions:
       contents: write
       
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4 # Updated from v3
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v5 # Updated from v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.9'
 
@@ -28,8 +31,15 @@ jobs:
 
       - name: Commit and Push changes
         run: |
-          git config --global user.name 'github-actions[bot]'
-          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          git add latest_bhavcopy.csv
-          git commit -m "Update NSE data: $(date)" || echo "No changes to commit"
-          git push
+          # Check if the file was actually created by the Python script
+          if [ -f "latest_bhavcopy.csv" ]; then
+            git config --global user.name 'github-actions[bot]'
+            git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+            git add latest_bhavcopy.csv
+            
+            # Only commit if there are actual changes to the file
+            git diff --quiet && git diff --staged --quiet || (git commit -m "Update NSE data: $(date)" && git push origin main)
+          else
+            echo "latest_bhavcopy.csv not found. Script likely failed to download (check NSE site status)."
+            exit 1
+          fi
