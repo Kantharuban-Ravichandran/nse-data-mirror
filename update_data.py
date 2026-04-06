@@ -6,10 +6,11 @@ from datetime import datetime, timedelta
 import pytz
 
 def fetch_nse_bhavcopy():
+    # Set timezone to IST for accurate date calculation
     ist = pytz.timezone('Asia/Kolkata')
     now = datetime.now(ist)
     
-    # If before 6:30 PM IST, today's data likely isn't posted; check yesterday
+    # If it's before 6:30 PM IST, today's data might not be ready. Check yesterday.
     if now.hour < 18 or (now.hour == 18 and now.minute < 30):
         now = now - timedelta(days=1)
 
@@ -19,20 +20,21 @@ def fetch_nse_bhavcopy():
         "Referer": "https://www.nseindia.com/all-reports"
     }
 
+    # "Wake up" the session by visiting the home page first
     try:
         session.get("https://www.nseindia.com", headers=headers, timeout=10)
     except:
         pass
 
+    # Try last 7 days to find the most recent trading day (skips weekends/holidays)
     for i in range(7):
-        while now.weekday() > 4:
+        while now.weekday() > 4: # Skip Sat/Sun
             now = now - timedelta(days=1)
             
-        date_str = now.strftime("%d%m%y")
-        full_date_str = now.strftime("%d%m%Y") # For the internal filename pdDDMMYYYY.csv
+        date_str = now.strftime("%d%m%y") # DDMMYY for URL
         url = f"https://nsearchives.nseindia.com/archives/equities/bhavcopy/pr/PR{date_str}.zip"
         
-        print(f"🔍 Checking PR Zip for {now.strftime('%Y-%m-%d')}...")
+        print(f"🔍 Searching for Bhavcopy ZIP: PR{date_str}.zip...")
         
         try:
             response = session.get(url, headers=headers, timeout=15)
@@ -41,34 +43,32 @@ def fetch_nse_bhavcopy():
                 with zipfile.ZipFile(io.BytesIO(response.content)) as z:
                     file_list = z.namelist()
                     
-                    # Target 1: pdddmmyyyy.csv (Symbols + Prices)
-                    target = f"pd{full_date_str}.csv"
+                    # CASE-INSENSITIVE SEARCH: Look for any file starting with 'pd' and ending in '.csv'
+                    # NSE sometimes uses PD07042026.csv or pd07042026.csv
+                    target = next((f for f in file_list if f.lower().startswith('pd') and f.lower().endswith('.csv')), None)
                     
-                    # Target 2: If naming is slightly different, look for any file starting with 'pd'
-                    if target not in file_list:
-                        target = next((f for f in file_list if f.startswith('pd') and f.endswith('.csv')), None)
-                    
-                    # Target 3: Safety fallback to the largest file (usually the main Bhavcopy)
+                    # FALLBACK: If no 'pd' file, take the largest CSV in the zip (usually the main data)
                     if not target:
-                        csv_info = [info for info in z.infolist() if info.filename.endswith('.csv')]
-                        if csv_info:
-                            target = max(csv_info, key=lambda x: x.file_size).filename
+                        csv_files = [info for info in z.infolist() if info.filename.lower().endswith('.csv')]
+                        if csv_files:
+                            target = max(csv_files, key=lambda x: x.file_size).filename
 
                     if target:
                         with z.open(target) as f:
                             content = f.read().decode('utf-8')
-                            with open("latest_bhavcopy.csv", "w") as output:
+                            # Overwrite the master file for GitHub to sync
+                            with open("latest_bhavcopy.csv", "w", encoding='utf-8') as output:
                                 output.write(content)
-                        print(f"✅ SUCCESS: Extracted {target} as your master data.")
+                        print(f"✅ SUCCESS: Extracted {target} as latest_bhavcopy.csv")
                         return 
             
-            print(f"❌ No data for {date_str}. Trying previous day...")
+            print(f"❌ No file found for {date_str}. Trying previous day...")
             now = now - timedelta(days=1)
         except Exception as e:
-            print(f"⚠️ Error: {e}")
+            print(f"⚠️ Error on {date_str}: {e}")
             now = now - timedelta(days=1)
 
-    print("🚫 All attempts failed.")
+    print("🚫 Critical Error: Could not find any valid NSE data in the last 7 days.")
     exit(1)
 
 if __name__ == "__main__":
