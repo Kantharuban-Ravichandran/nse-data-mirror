@@ -8,7 +8,8 @@ import pytz
 def fetch_nse_bhavcopy():
     # Set timezone to IST
     ist = pytz.timezone('Asia/Kolkata')
-    now = datetime.now(ist)
+    # now = datetime.now(ist)
+    now = datetime(2026, 4, 6, tzinfo=ist)
     
     # Format: cm22MAY2024bhav.csv.zip
     dd = now.strftime("%d")
